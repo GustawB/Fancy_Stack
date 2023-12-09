@@ -11,6 +11,7 @@ namespace cxx
 {
 	using std::map;
 	using std::list;
+	using std::move;
 	using std::shared_ptr;
 	using std::make_shared;
 
@@ -19,7 +20,8 @@ namespace cxx
 	// create a new data for it.
 	template <typename K, typename V> class stack_data
 	{
-		map<K, V> key_value_mapping;
+	public:
+		map<K, list<V>> key_value_mapping;
 		list<K> key_stack;
 
 	public:
@@ -51,8 +53,6 @@ namespace cxx
 		stack();
 		stack(stack const&); //copy constructor;
 		stack(stack&&); // move constructor;
-
-		V& front(K const&);
 
 		size_t size() const;
 
@@ -86,7 +86,42 @@ namespace cxx
 				(other.data_wrapper.get());
 		}
 	}
+
+	template<typename K, typename V>
+	inline stack<K, V>::stack(stack&& other)
+		: data_wrapper{move(other.data_wrapper)}
+	{}
+
+	template<typename K, typename V>
+	inline size_t stack<K, V>::size() const
+	{
+		return data_wrapper.get().key_stack.size();
+	}
 	
+	template<typename K, typename V>
+	inline V const& stack<K, V>::front(K const& key) const
+	{
+		if (!data_wrapper.get().key_value_mapping.contains(key))
+		{
+			throw std::invalid_argument;
+		}
+
+		return data_wrapper.get().key_value_mapping[key].back();
+	}
+	
+	template<typename K, typename V>
+	inline stack<K, V>& stack<K, V>::operator=(stack other)
+	{
+		if (this == &other) { return *this; } // check for self-assignment.
+		// Passing stack by value should already cause data_wrapper to increase
+		// its ref_count, so here I THINK I can just move it, because
+		// make_shared can take rvalues;
+		data_wrapper = make_shared<stack_data<K, V>>
+			(move(other.data_wrapper));
+
+		return* this;
+	}
+
 	template<typename K, typename V>
 	inline void stack<K, V>::aboutToModify(bool bIsStillShareable)
 	{
@@ -100,7 +135,6 @@ namespace cxx
 		}
 		bIsShareable = bIsStillShareable ? true : false;
 	}
-
 }
 
 #endif
