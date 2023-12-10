@@ -7,22 +7,27 @@
 #include <list>
 #include <map>
 
-namespace cxx 
+namespace cxx
 {
 	using std::map;
 	using std::list;
 	using std::move;
 	using std::shared_ptr;
 	using std::make_shared;
+	using std::pair;
 
 	// Every stack will be pointing to the stack data object,
 	// and if they share it and one modified it, then we 
 	// create a new data for it.
 	template <typename K, typename V> class stack_data
 	{
+		using element_list = list<pair<K, V>>;
+		using element_iterator = typename element_list::iterator;
 	public:
-		map<K, list<V>> key_value_mapping;
-		list<K> key_stack;
+		map < const K*,
+			list<element_iterator>,
+			decltype([](auto* a, auto* b) { return *a < *b; }) > elements_by_key;
+		element_list elements;
 
 	public:
 		stack_data();
@@ -33,22 +38,27 @@ namespace cxx
 	};
 
 	template <typename K, typename V>
-	stack_data<K, V>::stack_data () : key_value_mapping{},
-		key_stack{}
+	stack_data<K, V>::stack_data() : elements_by_key{},
+		elements{}
 	{}
 
 	template <typename K, typename V>
-	stack_data<K, V>::stack_data (const stack_data<K, V>& other)
-		: key_value_mapping{other.key_value_mapping},
-		key_stack{other.key_stack}
-	{}
+	stack_data<K, V>::stack_data(const stack_data<K, V>& other)
+		: elements_by_key{},
+		elements{ other.elements }
+	{
+		for (auto it = elements.begin(); it < elements.end(); it++)
+		{
+			elements_by_key[&it->first].push_back(it->second);
+		}
+	}
 
 
 	template <typename K, typename V> class stack
 	{
 		shared_ptr<stack_data<K, V>> data_wrapper;
 		// Flag used to determine whetherwe can share memory or not.
-		static bool bIsShareable;
+		bool bIsShareable = true;
 	public:
 		stack();
 		stack(stack const&); //copy constructor;
@@ -62,7 +72,10 @@ namespace cxx
 
 		void pop(K const&);
 
+		void clear();
+
 		size_t size() const;
+		size_t count(K const&) const;
 
 		std::pair<K const&, V&> front();
 		std::pair<K const&, V const&> front() const;
@@ -75,15 +88,12 @@ namespace cxx
 	};
 
 	template<typename K, typename V>
-	bool stack<K, V>::bIsShareable = true;
-
-	template<typename K, typename V>
-	stack<K, V>::stack() 
-		: data_wrapper{}
+	stack<K, V>::stack()
+		: data_wrapper{make_shared<stack_data<K, V>>()}
 	{}
 
 	template<typename K, typename V>
-	stack<K, V>::stack (stack const& other)
+	stack<K, V>::stack(stack const& other)
 	{
 		if (other.bIsShareable)
 		{
@@ -100,26 +110,61 @@ namespace cxx
 
 	template<typename K, typename V>
 	inline stack<K, V>::stack(stack&& other)
-		: data_wrapper{move(other.data_wrapper)}
+		: data_wrapper{ move(other.data_wrapper) }
 	{}
+
+	template<typename K, typename V>
+	inline void stack<K, V>::push(K const& k, V const& v)
+	{
+		auto& elements = data_wrapper->elements;
+		auto it = elements.insert(elements.end(), { k, v });
+		data_wrapper->elements_by_key[&it->first].push_back(it);
+	}
+
+	template<typename K, typename V>
+	inline void stack<K, V>::pop() {
+		if (data_wrapper->elements.empty())
+		{
+			throw std::invalid_argument("can't pop from empty stack");
+		}
+		auto& element = data_wrapper->elements.back();
+		data_wrapper->elements_by_key[&element.first].pop_back();
+		data_wrapper->elements.pop_back();
+	}
+
+	template<typename K, typename V>
+	inline void stack<K, V>::clear()
+	{
+		aboutToModify(true);
+		data_wrapper->elements.clear();
+		data_wrapper->elements_by_key.clear();
+	}
 
 	template<typename K, typename V>
 	inline size_t stack<K, V>::size() const
 	{
-		return data_wrapper.get().key_stack.size();
+		return data_wrapper->elements.size();
+	}
+
+	template<typename K, typename V>
+	inline size_t stack<K, V>::count(K const& key) const {
+		return data_wrapper->elements_by_key.at(&key).size();
 	}
 
 	template<typename K, typename V>
 	inline V& stack<K, V>::front(K const& key)
 	{
-		if (!data_wrapper.get().key_value_mapping.contains(key))
+		auto it = data_wrapper->elements_by_key.find(&key);
+		if (it == data_wrapper->elements_by_key.end())
 		{
-			throw std::invalid_argument;
+			throw std::invalid_argument("no element of given key in the stack");
 		}
 
-		return data_wrapper.get().key_value_mapping[key].back();
+		bIsShareable = false;
+
+		return it->second.back()->second;
 	}
-	
+
 	template<typename K, typename V>
 	inline stack<K, V>& stack<K, V>::operator=(stack other)
 	{
@@ -130,19 +175,18 @@ namespace cxx
 		data_wrapper = make_shared<stack_data<K, V>>
 			(move(other.data_wrapper));
 
-		return* this;
+		return*this;
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::aboutToModify(bool bIsStillShareable)
 	{
-		if (data_wrapper.use_count > 1 && bIsShareable)
+		if (data_wrapper.use_count() > 1 && bIsShareable)
 		{
 			// Make new wrapper. This should make the previous
 			// wrapper object to go out of scope and call its 
 			// destructor (RAII).
-			data_wrapper = make_shared<stack_data<K, V>>
-				(data_wrapper.get());
+			data_wrapper = shared_ptr<stack_data<K, V>>(); //make_shared<stack_data<K, V>>(*data_wrapper);
 		}
 		bIsShareable = bIsStillShareable ? true : false;
 	}
