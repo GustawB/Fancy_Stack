@@ -150,7 +150,7 @@ namespace cxx
 
 	template<typename K, typename V>
 	inline size_t stack<K, V>::count(K const& key) const {
-		return data_wrapper->elements_by_key.at(&key).size();
+		return data_wrapper->elements_by_key[&key].size();
 	}
 
 	template<typename K, typename V>
@@ -174,7 +174,7 @@ namespace cxx
 		{
 			throw std::invalid_argument("no element in the stack");
 		}
-		std::pair<K const&, V& const> result
+		std::pair<K const&, V const&> result
 		{ data_wrapper->elements.back().first,
 		data_wrapper->elements.back().second };
 
