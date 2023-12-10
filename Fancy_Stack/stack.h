@@ -184,11 +184,21 @@ namespace cxx
 	inline stack<K, V>& stack<K, V>::operator=(stack other)
 	{
 		if (this == &other) { return *this; } // check for self-assignment.
+		if (other.bIsShareable)
+		{
+			data_wrapper = other.data_wrapper;
+		}
+		else
+		{
+			data_wrapper = make_shared<stack_data<K, V>>
+				(*other.data_wrapper.get());
+		}
 		// Passing stack by value should already cause data_wrapper to increase
 		// its ref_count, so here I THINK I can just move it, because
 		// make_shared can take rvalues;
-		data_wrapper = make_shared<stack_data<K, V>>
-			(move(other.data_wrapper));
+		
+		//data_wrapper = make_shared<stack_data<K, V>>
+			//(move(other.data_wrapper));
 
 		return*this;
 	}
