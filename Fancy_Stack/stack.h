@@ -47,9 +47,9 @@ namespace cxx
 		: elements_by_key{},
 		elements{ other.elements }
 	{
-		for (auto it = elements.begin(); it < elements.end(); it++)
+		for (auto it = elements.begin(); it != elements.end(); it++)
 		{
-			elements_by_key[&it->first].push_back(it->second);
+			elements_by_key[&it->first].push_back(it);
 		}
 	}
 
@@ -104,7 +104,7 @@ namespace cxx
 		{
 			//Create new data object.
 			data_wrapper = make_shared<stack_data<K, V>>
-				(other.data_wrapper.get());
+				(*other.data_wrapper.get());
 		}
 	}
 
@@ -149,6 +149,21 @@ namespace cxx
 	template<typename K, typename V>
 	inline size_t stack<K, V>::count(K const& key) const {
 		return data_wrapper->elements_by_key.at(&key).size();
+	}
+
+	template<typename K, typename V>
+	inline std::pair<K const&, V&> stack<K, V>::front()
+	{
+		if (data_wrapper->elements.size() == 0)
+		{
+			throw std::invalid_argument("no element in the stack");
+		}
+		std::pair<K const&, V&> result{ data_wrapper->elements.back().first,
+		data_wrapper->elements.back().second };
+
+		bIsShareable = false;
+
+		return result;
 	}
 
 	template<typename K, typename V>
