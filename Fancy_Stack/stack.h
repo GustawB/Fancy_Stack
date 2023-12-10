@@ -116,6 +116,7 @@ namespace cxx
 	template<typename K, typename V>
 	inline void stack<K, V>::push(K const& k, V const& v)
 	{
+		aboutToModify(false);
 		auto& elements = data_wrapper->elements;
 		auto it = elements.insert(elements.end(), { k, v });
 		data_wrapper->elements_by_key[&it->first].push_back(it);
@@ -123,6 +124,7 @@ namespace cxx
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop() {
+		aboutToModify(false);
 		if (data_wrapper->elements.empty())
 		{
 			throw std::invalid_argument("can't pop from empty stack");
@@ -135,7 +137,7 @@ namespace cxx
 	template<typename K, typename V>
 	inline void stack<K, V>::clear()
 	{
-		aboutToModify(true);
+		aboutToModify(false);
 		data_wrapper->elements.clear();
 		data_wrapper->elements_by_key.clear();
 	}
@@ -158,10 +160,23 @@ namespace cxx
 		{
 			throw std::invalid_argument("no element in the stack");
 		}
+		aboutToModify(true);
 		std::pair<K const&, V&> result{ data_wrapper->elements.back().first,
 		data_wrapper->elements.back().second };
 
-		bIsShareable = false;
+		return result;
+	}
+
+	template<typename K, typename V>
+	inline std::pair<K const&, V const&> stack<K, V>::front() const
+	{
+		if (data_wrapper->elements.size() == 0)
+		{
+			throw std::invalid_argument("no element in the stack");
+		}
+		std::pair<K const&, V& const> result
+		{ data_wrapper->elements.back().first,
+		data_wrapper->elements.back().second };
 
 		return result;
 	}
@@ -174,8 +189,19 @@ namespace cxx
 		{
 			throw std::invalid_argument("no element of given key in the stack");
 		}
+		aboutToModify(true);
 
-		bIsShareable = false;
+		return it->second.back()->second;
+	}
+
+	template<typename K, typename V>
+	inline V const& stack<K, V>::front(K const& key) const
+	{
+		auto it = data_wrapper->elements_by_key.find(&key);
+		if (it == data_wrapper->elements_by_key.end())
+		{
+			throw std::invalid_argument("no element of given key in the stack");
+		}
 
 		return it->second.back()->second;
 	}
@@ -193,14 +219,8 @@ namespace cxx
 			data_wrapper = make_shared<stack_data<K, V>>
 				(*other.data_wrapper.get());
 		}
-		// Passing stack by value should already cause data_wrapper to increase
-		// its ref_count, so here I THINK I can just move it, because
-		// make_shared can take rvalues;
-		
-		//data_wrapper = make_shared<stack_data<K, V>>
-			//(move(other.data_wrapper));
 
-		return*this;
+		return * this;
 	}
 
 	template<typename K, typename V>
@@ -211,9 +231,10 @@ namespace cxx
 			// Make new wrapper. This should make the previous
 			// wrapper object to go out of scope and call its 
 			// destructor (RAII).
-			data_wrapper = shared_ptr<stack_data<K, V>>(); //make_shared<stack_data<K, V>>(*data_wrapper);
+			data_wrapper = make_shared<stack_data<K, V>>
+				(*data_wrapper.get());
 		}
-		bIsShareable = bIsStillShareable ? true : false;
+		bIsShareable = bIsStillShareable ? false : true;
 	}
 }
 
