@@ -33,14 +33,14 @@ namespace cxx
 	};
 
 	template <typename K, typename V>
-	stack_data<K, V>::stack_data <K, V>() : key_value_mapping<K, V>{},
-		key_stack<K, V>{}
+	stack_data<K, V>::stack_data () : key_value_mapping{},
+		key_stack{}
 	{}
 
 	template <typename K, typename V>
-	stack_data<K, V>::stack_data<K, V>(const stack_data<K, V>& other)
-		: key_value_mapping<K, V>{other.key_value_mapping},
-		key_stack<K, V>{other.key_stack}
+	stack_data<K, V>::stack_data (const stack_data<K, V>& other)
+		: key_value_mapping{other.key_value_mapping},
+		key_stack{other.key_stack}
 	{}
 
 
@@ -48,31 +48,42 @@ namespace cxx
 	{
 		shared_ptr<stack_data<K, V>> data_wrapper;
 		// Flag used to determine whetherwe can share memory or not.
-		static constinit bool bIsShareable = true;
+		static bool bIsShareable;
 	public:
 		stack();
 		stack(stack const&); //copy constructor;
 		stack(stack&&); // move constructor;
 
+		stack& operator=(stack);
+
+		void push(K const&, V const&);
+
+		void pop();
+
+		void pop(K const&);
+
 		size_t size() const;
+
+		std::pair<K const&, V&> front();
+		std::pair<K const&, V const&> front() const;
 
 		V& front(K const&);
 		V const& front(K const&) const;
-
-		stack& operator=(stack);
 
 	private:
 		void aboutToModify(bool);
 	};
 
 	template<typename K, typename V>
-	stack<K, V>::stack <K, V>() 
-		: data_wrapper{make_shared<stack_data<K, V>>},
-		unshareable{0}
+	bool stack<K, V>::bIsShareable = true;
+
+	template<typename K, typename V>
+	stack<K, V>::stack() 
+		: data_wrapper{}
 	{}
 
 	template<typename K, typename V>
-	stack<K, V>::stack <K, V> (stack const& other)
+	stack<K, V>::stack (stack const& other)
 	{
 		if (other.bIsShareable)
 		{
@@ -97,9 +108,9 @@ namespace cxx
 	{
 		return data_wrapper.get().key_stack.size();
 	}
-	
+
 	template<typename K, typename V>
-	inline V const& stack<K, V>::front(K const& key) const
+	inline V& stack<K, V>::front(K const& key)
 	{
 		if (!data_wrapper.get().key_value_mapping.contains(key))
 		{
