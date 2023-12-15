@@ -1,9 +1,10 @@
 #ifndef STACK_H
 #define STACK_H
 
-#include <iostream>
+#include <iterator>
+#include <cstddef>  // ptrdiff_t
 #include <memory>
-#include <limits.h>
+#include <stdexcept> // required for VS
 #include <list>
 #include <map>
 
@@ -15,6 +16,8 @@ namespace cxx
 	using std::shared_ptr;
 	using std::make_shared;
 	using std::pair;
+	using std::ptrdiff_t;
+	using std::forward_iterator_tag;
 
 	// Every stack will be pointing to the stack data object,
 	// and if they share it and one modified it, then we 
@@ -35,7 +38,6 @@ namespace cxx
 			decltype([](element_by_key_iterator a, element_by_key_iterator b) 
 		{ return a->first < b->first; }) > key_to_list_map;
 
-	public:
 		stack_data();
 		~stack_data() = default;
 
@@ -99,6 +101,71 @@ namespace cxx
 
 	private:
 		void aboutToModify(bool);
+
+	public:
+		class const_iterator
+		{
+		public:
+			using iterator_category = forward_iterator_tag;
+			using value_type = K;
+			using difference_type = ptrdiff_t;
+			using pointer = const value_type*;
+			using reference = const value_type&;
+
+		private:
+			map<K, list<V>>::iterator ptr;
+
+		public:
+			const_iterator(map<K, list<V>>::iterator p) : ptr(p)
+			{}
+
+			reference operator*() noexcept
+			{
+				return ptr->first;
+			}
+
+			pointer operator->() noexcept
+			{
+				return *ptr->first;
+			}
+
+			const_iterator& operator++() noexcept // ++iterator;
+			{
+				++ptr;
+				return *this;
+			}
+
+			const_iterator& operator++(int) noexcept // iterator++
+			{
+				const_iterator result(*this);
+				operator++();
+				return result;
+			}
+
+			friend bool operator==(const const_iterator& a,
+				const const_iterator& b) noexcept
+			{
+				return a.ptr == b.ptr;
+			}
+
+			friend bool operator!= (const const_iterator& a,
+				const const_iterator& b) noexcept
+			{
+				return !(a == b);
+			}
+		};
+
+		const_iterator cbegin() noexcept
+		{
+			auto map_beg = data_wrapper->elements_by_key.begin();
+			return const_iterator(map_beg);
+		}
+
+		const_iterator cend() noexcept
+		{
+			auto map_end = data_wrapper->elements_by_key.end();
+			return const_iterator(map_end);
+		}
 	};
 
 	template<typename K, typename V>
