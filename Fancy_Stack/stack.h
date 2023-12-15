@@ -30,19 +30,6 @@ namespace cxx
 		//list<pair<shared_ptr<K>>, V> elements;
 		element_map elements_by_key;
 		list<pair<element_by_key_iterator, element_iterator>> elements;
-		
-
-		/*template<class T> struct ptr_less
-		{
-			bool operator()(const T* lhs, const T* rhs) const
-			{
-				return *lhs < *rhs;
-			}
-		};
-		map < const K*,
-			list<element_iterator>,
-			ptr_less<K> > elements_by_key;
-		element_list elements;*/
 
 	public:
 		stack_data();
@@ -59,14 +46,19 @@ namespace cxx
 
 	template <typename K, typename V>
 	stack_data<K, V>::stack_data(const stack_data<K, V>& other)
-		: elements_by_key{other.elements_by_key},
+		: elements_by_key{},
 		elements{}
 	{
-
-		/*for (auto it = elements.begin(); it != elements.end(); it++)
+		for (auto iter = other.elements.begin();
+			iter != other.elements.end(); ++iter)
 		{
-			elements_by_key[&it->first].push_back(it);
-		}*/
+			auto map_pair = iter->first;
+			elements_by_key[map_pair->first].push_back(*(iter->second));
+			auto key_iter = elements_by_key.find(map_pair->first);
+			auto value_iter = elements_by_key[key_iter->first].end();
+			--value_iter;
+			elements.push_back(pair{ key_iter, value_iter });
+		}
 	}
 
 
@@ -133,9 +125,13 @@ namespace cxx
 	inline void stack<K, V>::push(K const& k, V const& v)
 	{
 		aboutToModify(false);
-		auto& elements = data_wrapper->elements;
-		auto it = elements.insert(elements.end(), { k, v });
-		data_wrapper->elements_by_key[&it->first].push_back(it);
+		data_wrapper->elements_by_key[k].push_back(v);
+		//THANK GOD find() works in log(n);
+		auto key_iter = data_wrapper->elements_by_key.find(k);
+		auto value_iter = data_wrapper->elements_by_key[k].end();
+		// this will get as the iterator to the last element in the list.
+		--value_iter; 
+		data_wrapper->elements.push_back(pair{ key_iter, value_iter });
 	}
 
 	template<typename K, typename V>
@@ -149,6 +145,7 @@ namespace cxx
 		data_wrapper->elements_by_key[&element.first].pop_back();
 		data_wrapper->elements.pop_back();
 	}
+
 	template<typename K, typename V>
 	inline void stack<K, V>::pop(K const& k) {
 		aboutToModify(false);
@@ -189,8 +186,9 @@ namespace cxx
 			throw std::invalid_argument("no element in the stack");
 		}
 		aboutToModify(true);
-		std::pair<K const&, V&> result{ data_wrapper->elements.back().first,
-		data_wrapper->elements.back().second };
+		const K& key = data_wrapper->elements.back().first->first;
+		V& value = *(data_wrapper->elements.back().second);
+		std::pair<K const&, V&> result{ key, value };
 
 		return result;
 	}
@@ -202,9 +200,9 @@ namespace cxx
 		{
 			throw std::invalid_argument("no element in the stack");
 		}
-		std::pair<K const&, V const&> result
-		{ data_wrapper->elements.back().first,
-		data_wrapper->elements.back().second };
+		const K& key = data_wrapper->elements.back().first->first;
+		const V& value = *(data_wrapper->elements.back().second);
+		std::pair<K const&, V const &> result{ key, value };
 
 		return result;
 	}
