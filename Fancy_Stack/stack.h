@@ -24,10 +24,21 @@ namespace cxx
 		using element_list = list<pair<K, V>>;
 		using element_iterator = typename element_list::iterator;
 	public:
-		map < const K*,
+		//list<pair<shared_ptr<K>>, V> elements;
+		map<K, list<V>> elements_by_key;
+
+
+		template<class T> struct ptr_less
+		{
+			bool operator()(const T* lhs, const T* rhs) const
+			{
+				return *lhs < *rhs;
+			}
+		};
+		/*map < const K*,
 			list<element_iterator>,
-			decltype([](auto* a, auto* b) { return *a < *b; }) > elements_by_key;
-		element_list elements;
+			ptr_less<K> > elements_by_key;
+		element_list elements;*/
 
 	public:
 		stack_data();
@@ -89,7 +100,7 @@ namespace cxx
 
 	template<typename K, typename V>
 	stack<K, V>::stack()
-		: data_wrapper{make_shared<stack_data<K, V>>()}
+		: data_wrapper{ make_shared<stack_data<K, V>>() }
 	{}
 
 	template<typename K, typename V>
@@ -132,6 +143,18 @@ namespace cxx
 		auto& element = data_wrapper->elements.back();
 		data_wrapper->elements_by_key[&element.first].pop_back();
 		data_wrapper->elements.pop_back();
+	}
+	template<typename K, typename V>
+	inline void stack<K, V>::pop(K const& k) {
+		aboutToModify(false);
+		auto map_it = data_wrapper->elements_by_key.find(&k);
+		if (map_it == data_wrapper->elements_by_key.end())
+		{
+			throw std::invalid_argument("no element with given key");
+		}
+		auto list_it = *std::prev(map_it->second.end());
+		data_wrapper->elements.erase(list_it);
+		map_it->second.pop_back();
 	}
 
 	template<typename K, typename V>
@@ -220,7 +243,7 @@ namespace cxx
 				(*other.data_wrapper.get());
 		}
 
-		return * this;
+		return *this;
 	}
 
 	template<typename K, typename V>
