@@ -184,8 +184,8 @@ namespace cxx
 		else
 		{
 			//Create new data object.
-			data_wrapper = make_shared<stack_data<K, V>>
-				(*other.data_wrapper.get());
+			stack_data other_data = *other.data_wrapper.get();
+			data_wrapper = make_shared<stack_data<K, V>>(other_data);
 		}
 	}
 
@@ -197,7 +197,7 @@ namespace cxx
 	template<typename K, typename V>
 	inline void stack<K, V>::push(K const& k, V const& v)
 	{
-		aboutToModify(false);
+		aboutToModify(true);
 		data_wrapper->elements_by_key[k].push_back(v);
 		//THANK GOD find() works in log(n);
 		auto key_iter = data_wrapper->elements_by_key.find(k);
@@ -212,11 +212,11 @@ namespace cxx
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop() {
-		aboutToModify(false);
 		if (data_wrapper->elements.empty())
 		{
 			throw std::invalid_argument("can't pop from empty stack");
 		}
+		aboutToModify(true);
 		auto elements_last_item = data_wrapper->elements.back();
 		auto map_iter = elements_last_item.first;
 		auto key_iter = map_iter->first;
@@ -231,11 +231,11 @@ namespace cxx
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop(K const& k) {
-		aboutToModify(false);
 		if (data_wrapper->elements_by_key[k].empty())
 		{
 			throw std::invalid_argument("no element with given key");
 		}
+		aboutToModify(true);
 		auto map_iterator = data_wrapper->elements_by_key.find(k);
 		auto deletion_iter = data_wrapper->key_to_list_map[map_iterator].back();
 		data_wrapper->elements.erase(deletion_iter);
@@ -250,7 +250,7 @@ namespace cxx
 	template<typename K, typename V>
 	inline void stack<K, V>::clear()
 	{
-		aboutToModify(false);
+		aboutToModify(true);
 		data_wrapper->elements.clear();
 		data_wrapper->elements_by_key.clear();
 		data_wrapper->key_to_list_map.clear();
@@ -278,7 +278,7 @@ namespace cxx
 		{
 			throw std::invalid_argument("no element in the stack");
 		}
-		aboutToModify(true);
+		aboutToModify(false);
 		const K& key = data_wrapper->elements.back().first->first;
 		V& value = *(data_wrapper->elements.back().second);
 		std::pair<K const&, V&> result{ key, value };
@@ -303,26 +303,24 @@ namespace cxx
 	template<typename K, typename V>
 	inline V& stack<K, V>::front(K const& key)
 	{
-		auto it = data_wrapper->elements_by_key.find(&key);
-		if (it == data_wrapper->elements_by_key.end())
+		if (data_wrapper->elements_by_key[key].empty())
 		{
 			throw std::invalid_argument("no element of given key in the stack");
 		}
-		aboutToModify(true);
+		aboutToModify(false);
 
-		return it->second.back()->second;
+		return data_wrapper->elements_by_key[key].back();
 	}
 
 	template<typename K, typename V>
 	inline V const& stack<K, V>::front(K const& key) const
 	{
-		auto it = data_wrapper->elements_by_key.find(&key);
-		if (it == data_wrapper->elements_by_key.end())
+		if (data_wrapper->elements_by_key[key].empty())
 		{
 			throw std::invalid_argument("no element of given key in the stack");
 		}
 
-		return it->second.back()->second;
+		return data_wrapper->elements_by_key[key].back();
 	}
 
 	template<typename K, typename V>
@@ -353,7 +351,7 @@ namespace cxx
 			data_wrapper = make_shared<stack_data<K, V>>
 				(*data_wrapper.get());
 		}
-		bIsShareable = bIsStillShareable ? false : true;
+		bIsShareable = bIsStillShareable ? true : false;
 	}
 }
 
