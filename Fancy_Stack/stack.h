@@ -22,14 +22,18 @@ namespace cxx
 	template <typename K, typename V> class stack_data
 	{
 		//using element_list = list<pair<K, V>>;
-		using element_list = list<V>;
+		//using element_list = list<V>;
 		using element_map = map<K, list<V>>;
-		using element_iterator = typename element_list::iterator;
+		using element_iterator = typename list<V>::iterator;
 		using element_by_key_iterator = typename element_map::iterator;
+		using element_list = list<pair<element_by_key_iterator, element_iterator>>;
+		using element_list_iterator = element_list::iterator;
 	public:
-		//list<pair<shared_ptr<K>>, V> elements;
 		element_map elements_by_key;
-		list<pair<element_by_key_iterator, element_iterator>> elements;
+		element_list elements;
+		map<element_by_key_iterator, list<element_list_iterator>,
+			decltype([](element_by_key_iterator a, element_by_key_iterator b) 
+		{ return a->first < b->first; }) > key_to_list_map;
 
 	public:
 		stack_data();
@@ -41,13 +45,12 @@ namespace cxx
 
 	template <typename K, typename V>
 	stack_data<K, V>::stack_data() : elements_by_key{},
-		elements{}
+		elements{}, key_to_list_map{}
 	{}
 
 	template <typename K, typename V>
 	stack_data<K, V>::stack_data(const stack_data<K, V>& other)
-		: elements_by_key{},
-		elements{}
+		: elements_by_key{}, elements{}, key_to_list_map{}
 	{
 		for (auto iter = other.elements.begin();
 			iter != other.elements.end(); ++iter)
@@ -58,6 +61,9 @@ namespace cxx
 			auto value_iter = elements_by_key[key_iter->first].end();
 			--value_iter;
 			elements.push_back(pair{ key_iter, value_iter });
+			auto list_iter = elements.end();
+			--list_iter;
+			key_to_list_map[map_pair].push_back(list_iter);
 		}
 	}
 
@@ -130,8 +136,11 @@ namespace cxx
 		auto key_iter = data_wrapper->elements_by_key.find(k);
 		auto value_iter = data_wrapper->elements_by_key[k].end();
 		// this will get as the iterator to the last element in the list.
-		--value_iter; 
+		--value_iter;
 		data_wrapper->elements.push_back(pair{ key_iter, value_iter });
+		auto list_iter = data_wrapper->elements.end();
+		--list_iter;
+		data_wrapper->key_to_list_map[key_iter].push_back(list_iter);
 	}
 
 	template<typename K, typename V>
@@ -141,22 +150,34 @@ namespace cxx
 		{
 			throw std::invalid_argument("can't pop from empty stack");
 		}
-		auto& element = data_wrapper->elements.back();
-		data_wrapper->elements_by_key[&element.first].pop_back();
+		auto elements_last_item = data_wrapper->elements.back();
+		auto map_iter = elements_last_item.first;
+		auto key_iter = map_iter->first;
+		auto value_iter = elements_last_item.second;
+		auto deletion_iter = data_wrapper->key_to_list_map[map_iter].end();
+		--deletion_iter;
+		data_wrapper->key_to_list_map[map_iter]
+			.erase(deletion_iter);
+		data_wrapper->elements_by_key[key_iter].erase(value_iter);
 		data_wrapper->elements.pop_back();
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop(K const& k) {
 		aboutToModify(false);
-		auto map_it = data_wrapper->elements_by_key.find(&k);
-		if (map_it == data_wrapper->elements_by_key.end())
+		if (data_wrapper->elements_by_key[k].empty())
 		{
 			throw std::invalid_argument("no element with given key");
 		}
-		auto list_it = *std::prev(map_it->second.end());
-		data_wrapper->elements.erase(list_it);
-		map_it->second.pop_back();
+		auto map_iterator = data_wrapper->elements_by_key.find(k);
+		auto deletion_iter = data_wrapper->key_to_list_map[map_iterator].back();
+		data_wrapper->elements.erase(deletion_iter);
+		auto key_to_list_end = data_wrapper->key_to_list_map[map_iterator].end();
+		--key_to_list_end;
+		data_wrapper->key_to_list_map[map_iterator].erase(key_to_list_end);
+		auto by_key_end = data_wrapper->elements_by_key[k].end();
+		--by_key_end;
+		data_wrapper->elements_by_key[k].erase(by_key_end);
 	}
 
 	template<typename K, typename V>
@@ -165,6 +186,7 @@ namespace cxx
 		aboutToModify(false);
 		data_wrapper->elements.clear();
 		data_wrapper->elements_by_key.clear();
+		data_wrapper->key_to_list_map.clear();
 	}
 
 	template<typename K, typename V>
@@ -175,7 +197,11 @@ namespace cxx
 
 	template<typename K, typename V>
 	inline size_t stack<K, V>::count(K const& key) const {
-		return data_wrapper->elements_by_key[&key].size();
+		if (!data_wrapper->elements_by_key.contains(key))
+		{
+			return 0;
+		}
+		return data_wrapper->elements_by_key[key].size();
 	}
 
 	template<typename K, typename V>
@@ -202,7 +228,7 @@ namespace cxx
 		}
 		const K& key = data_wrapper->elements.back().first->first;
 		const V& value = *(data_wrapper->elements.back().second);
-		std::pair<K const&, V const &> result{ key, value };
+		std::pair<K const&, V const&> result{ key, value };
 
 		return result;
 	}
