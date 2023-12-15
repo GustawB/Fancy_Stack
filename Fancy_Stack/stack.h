@@ -21,21 +21,25 @@ namespace cxx
 	// create a new data for it.
 	template <typename K, typename V> class stack_data
 	{
-		using element_list = list<pair<K, V>>;
+		//using element_list = list<pair<K, V>>;
+		using element_list = list<V>;
+		using element_map = map<K, list<V>>;
 		using element_iterator = typename element_list::iterator;
+		using element_by_key_iterator = typename element_map::iterator;
 	public:
 		//list<pair<shared_ptr<K>>, V> elements;
-		map<K, list<V>> elements_by_key;
+		element_map elements_by_key;
+		list<pair<element_by_key_iterator, element_iterator>> elements;
+		
 
-
-		template<class T> struct ptr_less
+		/*template<class T> struct ptr_less
 		{
 			bool operator()(const T* lhs, const T* rhs) const
 			{
 				return *lhs < *rhs;
 			}
 		};
-		/*map < const K*,
+		map < const K*,
 			list<element_iterator>,
 			ptr_less<K> > elements_by_key;
 		element_list elements;*/
@@ -55,13 +59,14 @@ namespace cxx
 
 	template <typename K, typename V>
 	stack_data<K, V>::stack_data(const stack_data<K, V>& other)
-		: elements_by_key{},
-		elements{ other.elements }
+		: elements_by_key{other.elements_by_key},
+		elements{}
 	{
-		for (auto it = elements.begin(); it != elements.end(); it++)
+
+		/*for (auto it = elements.begin(); it != elements.end(); it++)
 		{
 			elements_by_key[&it->first].push_back(it);
-		}
+		}*/
 	}
 
 
