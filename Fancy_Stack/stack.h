@@ -58,14 +58,16 @@ namespace cxx
 			iter != other.elements.end(); ++iter)
 		{
 			auto map_pair = iter->first;
-			elements_by_key[map_pair->first].push_back(*(iter->second));
-			auto key_iter = elements_by_key.find(map_pair->first);
-			auto value_iter = elements_by_key[key_iter->first].end();
+			K key = map_pair->first;
+			V value = *(iter->second);
+			elements_by_key[key].push_back(value);
+			auto key_iter = elements_by_key.find(key);
+			auto value_iter = elements_by_key[key].end();
 			--value_iter;
 			elements.push_back(pair{ key_iter, value_iter });
 			auto list_iter = elements.end();
 			--list_iter;
-			key_to_list_map[map_pair].push_back(list_iter);
+			key_to_list_map[key_iter].push_back(list_iter);
 		}
 	}
 
@@ -79,6 +81,7 @@ namespace cxx
 		stack();
 		stack(stack const&); //copy constructor;
 		stack(stack&&); // move constructor;
+		~stack() = default;
 
 		stack& operator=(stack);
 
@@ -184,8 +187,7 @@ namespace cxx
 		else
 		{
 			//Create new data object.
-			stack_data other_data = *other.data_wrapper.get();
-			data_wrapper = make_shared<stack_data<K, V>>(other_data);
+			data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
 		}
 	}
 
@@ -195,19 +197,19 @@ namespace cxx
 	{}
 
 	template<typename K, typename V>
-	inline void stack<K, V>::push(K const& k, V const& v)
+	inline void stack<K, V>::push(K const& key, V const& value)
 	{
 		aboutToModify(true);
-		data_wrapper->elements_by_key[k].push_back(v);
+		data_wrapper->elements_by_key[key].push_back(value);
 		//THANK GOD find() works in log(n);
-		auto key_iter = data_wrapper->elements_by_key.find(k);
-		auto value_iter = data_wrapper->elements_by_key[k].end();
-		// this will get as the iterator to the last element in the list.
+		auto map_iter = data_wrapper->elements_by_key.find(key);
+		auto value_iter = data_wrapper->elements_by_key[key].end();
+		// this will get us the iterator to the last element in the list.
 		--value_iter;
-		data_wrapper->elements.push_back(pair{ key_iter, value_iter });
+		data_wrapper->elements.push_back(pair{ map_iter, value_iter });
 		auto list_iter = data_wrapper->elements.end();
 		--list_iter;
-		data_wrapper->key_to_list_map[key_iter].push_back(list_iter);
+		data_wrapper->key_to_list_map[map_iter].push_back(list_iter);
 	}
 
 	template<typename K, typename V>
@@ -219,32 +221,52 @@ namespace cxx
 		aboutToModify(true);
 		auto elements_last_item = data_wrapper->elements.back();
 		auto map_iter = elements_last_item.first;
-		auto key_iter = map_iter->first;
 		auto value_iter = elements_last_item.second;
-		auto deletion_iter = data_wrapper->key_to_list_map[map_iter].end();
-		--deletion_iter;
-		data_wrapper->key_to_list_map[map_iter]
-			.erase(deletion_iter);
-		data_wrapper->elements_by_key[key_iter].erase(value_iter);
+		K key = map_iter->first;
+		auto pop_iter = data_wrapper->key_to_list_map[map_iter].end();
+		--pop_iter;
+		data_wrapper->key_to_list_map[map_iter].erase(pop_iter);
+		if (data_wrapper->key_to_list_map[map_iter].empty())
+		{
+			data_wrapper->key_to_list_map.erase(map_iter);
+		}
+
+		data_wrapper->elements_by_key[key].erase(value_iter);
+		if (data_wrapper->elements_by_key[key].empty())
+		{
+			data_wrapper->elements_by_key.erase(key);
+		}
+
 		data_wrapper->elements.pop_back();
 	}
 
 	template<typename K, typename V>
-	inline void stack<K, V>::pop(K const& k) {
-		if (data_wrapper->elements_by_key[k].empty())
+	inline void stack<K, V>::pop(K const& key) {
+		if (data_wrapper->elements_by_key[key].empty())
 		{
 			throw std::invalid_argument("no element with given key");
 		}
 		aboutToModify(true);
-		auto map_iterator = data_wrapper->elements_by_key.find(k);
-		auto deletion_iter = data_wrapper->key_to_list_map[map_iterator].back();
-		data_wrapper->elements.erase(deletion_iter);
-		auto key_to_list_end = data_wrapper->key_to_list_map[map_iterator].end();
+		auto map_iter = data_wrapper->elements_by_key.find(key);
+		auto pop_iter = data_wrapper->key_to_list_map[map_iter].back();
+		--pop_iter;
+		data_wrapper->elements.erase(pop_iter);
+
+		auto key_to_list_end = data_wrapper->key_to_list_map[map_iter].end();
 		--key_to_list_end;
-		data_wrapper->key_to_list_map[map_iterator].erase(key_to_list_end);
-		auto by_key_end = data_wrapper->elements_by_key[k].end();
+		data_wrapper->key_to_list_map[map_iter].erase(key_to_list_end);
+		if (data_wrapper->key_to_list_map[map_iter].empty())
+		{
+			data_wrapper->key_to_list_map.erase(map_iter);
+		}
+		
+		auto by_key_end = data_wrapper->elements_by_key[key].end();
 		--by_key_end;
-		data_wrapper->elements_by_key[k].erase(by_key_end);
+		data_wrapper->elements_by_key[key].erase(by_key_end);
+		if (data_wrapper->elements_by_key[key].empty())
+		{
+			data_wrapper->elements_by_key.erase(key);
+		}
 	}
 
 	template<typename K, typename V>
@@ -333,8 +355,7 @@ namespace cxx
 		}
 		else
 		{
-			data_wrapper = make_shared<stack_data<K, V>>
-				(*other.data_wrapper.get());
+			data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
 		}
 
 		return *this;
@@ -348,8 +369,7 @@ namespace cxx
 			// Make new wrapper. This should make the previous
 			// wrapper object to go out of scope and call its 
 			// destructor (RAII).
-			data_wrapper = make_shared<stack_data<K, V>>
-				(*data_wrapper.get());
+			data_wrapper = make_shared<stack_data<K, V>>(*data_wrapper);
 		}
 		bIsShareable = bIsStillShareable ? true : false;
 	}
