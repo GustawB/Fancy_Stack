@@ -268,6 +268,7 @@ namespace cxx
 			return it;
 		}
 
+		// Marks the fact that we don't want to revert changes.
 		void drop_rollback() noexcept
 		{
 			rollback = false;
@@ -300,6 +301,7 @@ namespace cxx
 			}
 		}
 
+		// Marks the fact that we don't want to revert changes.
 		void drop_rollback() noexcept
 		{
 			rollback = false;
@@ -343,6 +345,7 @@ namespace cxx
 			}
 		}
 
+		// Marks the fact that we don't want to revert changes.
 		void drop_rollback()
 		{
 			rollback = false;
