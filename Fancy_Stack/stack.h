@@ -4,7 +4,6 @@
 #include <iterator>
 #include <cstddef>  // ptrdiff_t
 #include <memory>
-#include <stdexcept> // required for VS
 #include <list>
 #include <map>
 
@@ -28,13 +27,15 @@ namespace cxx
 		using element_map = map<K, list<V>>;
 		using element_iterator = typename list<V>::iterator;
 		using element_by_key_iterator = typename element_map::iterator;
-		using element_list = list<pair<element_by_key_iterator, element_iterator>>;
+		using element_list = list<pair<element_by_key_iterator, 
+			element_iterator>>;
 		using element_list_iterator = element_list::iterator;
 	public:
 		element_map elements_by_key;
 		element_list elements;
 		map < element_by_key_iterator, list<element_list_iterator>,
-			decltype([](element_by_key_iterator a, element_by_key_iterator b)
+			decltype([](element_by_key_iterator a, 
+				element_by_key_iterator b)
 				{ return a->first < b->first; }) > key_to_list_map;
 
 		stack_data(); // Empty constructor.
@@ -351,6 +352,7 @@ namespace cxx
 	template<typename K, typename V>
 	inline void stack<K, V>::push(K const& key, V const& value)
 	{
+		// Add key : value entry to the elements_by_key map.
 		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, true);
 		map_access_guard elements_by_key(
 			data_wrapper->elements_by_key,
@@ -360,12 +362,16 @@ namespace cxx
 			elements_by_key(),
 			value
 		);
+
+		// Add key_iter : value_iter pair to the elements_list.
 		auto value_iter = elements_by_key().end();
 		--value_iter;
 		push_back_guard push_element(
 			data_wrapper->elements,
 			pair{ elements_by_key.iter(), value_iter }
 		);
+		
+		// Add map_iter : value_iter entry to the key_to_list map.
 		auto list_iter = data_wrapper->elements.end();
 		--list_iter;
 		map_access_guard key_to_list_map(
@@ -376,6 +382,9 @@ namespace cxx
 			key_to_list_map(),
 			list_iter
 		);
+		// If none of the above threw any exception, here we are calling
+		// drop_rollback() functions so that changes on data structures
+		// won't be reverted.
 		guard.drop_rollback();
 		elements_by_key.drop_rollback();
 		push_value.drop_rollback();
@@ -388,8 +397,9 @@ namespace cxx
 	inline void stack<K, V>::pop() {
 		if (data_wrapper->elements.empty())
 		{
-			throw std::invalid_argument("can't pop from empty stack");
+			throw std::invalid_argument("The stack is empty.");
 		}
+		// Find iterators to elements that we want to remove from the stack.
 		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, true);
 		auto elements_last_item = data_wrapper->elements.back();
 		auto map_iter = elements_last_item.first;
@@ -398,27 +408,31 @@ namespace cxx
 		auto pop_iter = data_wrapper->key_to_list_map[map_iter].end();
 		--pop_iter;
 		data_wrapper->key_to_list_map[map_iter].erase(pop_iter);
+		// If there is nothing under the key, we can erase it.
 		if (data_wrapper->key_to_list_map[map_iter].empty())
 		{
 			data_wrapper->key_to_list_map.erase(map_iter);
 		}
 
 		data_wrapper->elements_by_key[key].erase(value_iter);
+		// If there is nothing under the key, we can erase it.
 		if (data_wrapper->elements_by_key[key].empty())
 		{
 			data_wrapper->elements_by_key.erase(key);
 		}
 
 		data_wrapper->elements.pop_back();
-		guard.drop_rollback();
+		guard.drop_rollback(); // No exceptions. don't revert changes.
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop(K const& key) {
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument("no element with given key");
+			throw std::invalid_argument
+			("There's no element with the given key in the stack.");
 		}
+		// Find iterators to elements that we want to remove from the stack.
 		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, true);
 		auto map_iter = data_wrapper->elements_by_key.find(key);
 		auto pop_iter = data_wrapper->key_to_list_map[map_iter].back();
@@ -427,6 +441,7 @@ namespace cxx
 		auto key_to_list_end = data_wrapper->key_to_list_map[map_iter].end();
 		--key_to_list_end;
 		data_wrapper->key_to_list_map[map_iter].erase(key_to_list_end);
+		// If there is nothing under the key, we can erase it.
 		if (data_wrapper->key_to_list_map[map_iter].empty())
 		{
 			data_wrapper->key_to_list_map.erase(map_iter);
@@ -435,21 +450,23 @@ namespace cxx
 		auto by_key_end = data_wrapper->elements_by_key[key].end();
 		--by_key_end;
 		data_wrapper->elements_by_key[key].erase(by_key_end);
+		// If there is nothing under the key, we can erase it.
 		if (data_wrapper->elements_by_key[key].empty())
 		{
 			data_wrapper->elements_by_key.erase(key);
 		}
-		guard.drop_rollback();
+		guard.drop_rollback(); // No exceptions. don't revert changes.
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::clear()
 	{
+		// Clear all the data.
 		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, true);
 		data_wrapper->elements.clear();
 		data_wrapper->elements_by_key.clear();
 		data_wrapper->key_to_list_map.clear();
-		guard.drop_rollback();
+		guard.drop_rollback(); // No exceptions. don't revert changes.
 	}
 
 	template<typename K, typename V>
@@ -462,7 +479,7 @@ namespace cxx
 	inline size_t stack<K, V>::count(K const& key) const noexcept {
 		if (!data_wrapper->elements_by_key.contains(key))
 		{
-			return 0;
+			return 0; // There are no values with the given key.
 		}
 		return data_wrapper->elements_by_key[key].size();
 	}
@@ -472,13 +489,13 @@ namespace cxx
 	{
 		if (data_wrapper->elements.size() == 0)
 		{
-			throw std::invalid_argument("no element in the stack");
+			throw std::invalid_argument("The stack is empty.");
 		}
 		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, false);
 		const K& key = data_wrapper->elements.back().first->first;
 		std::pair<K const&, V&> result{ key,
 			*(data_wrapper->elements.back().second) };
-		guard.drop_rollback();
+		guard.drop_rollback(); // No exceptions. don't revert changes.
 		return result;
 	}
 
@@ -487,7 +504,7 @@ namespace cxx
 	{
 		if (data_wrapper->elements.size() == 0)
 		{
-			throw std::invalid_argument("no element in the stack");
+			throw std::invalid_argument("The stack is empty.");
 		}
 		const K& key = data_wrapper->elements.back().first->first;
 		std::pair<K const&, V const&> result{ key,
@@ -501,10 +518,11 @@ namespace cxx
 	{
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument("no element of given key in the stack");
+			throw std::invalid_argument
+			("There's no element with the given key in the stack.");
 		}
 		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, false);
-		guard.drop_rollback();
+		guard.drop_rollback(); // No exceptions. don't revert changes.
 		return data_wrapper->elements_by_key[key].back();
 	}
 
@@ -513,7 +531,8 @@ namespace cxx
 	{
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument("no element of given key in the stack");
+			throw std::invalid_argument
+			("There's no element with the given key in the stack.");
 		}
 
 		return data_wrapper->elements_by_key[key].back();
@@ -529,6 +548,7 @@ namespace cxx
 		}
 		else
 		{
+			// Create new stack_data object for this stack.
 			data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
 		}
 
