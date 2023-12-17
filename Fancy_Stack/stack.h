@@ -229,11 +229,17 @@ namespace cxx
 	static bool push_back_throw = false;
 	static bool modify_guard_throw = false;
 
+	// Map guard used to guarantee strong-exception guarantee.
 	template<typename Map>
 	class map_access_guard {
 		using K = Map::key_type;
 		using V = Map::mapped_type;
+
+		bool rollback;
+		Map& map;
+		Map::iterator it;
 	public:
+		// Constructor.
 		map_access_guard(Map& map, K const& key) : map(map)
 		{
 			if (map_access_throw) throw std::bad_alloc();
@@ -241,6 +247,8 @@ namespace cxx
 			it = p.first;
 			rollback = p.second;
 		}
+
+		// Destructor.
 		~map_access_guard()
 		{
 			if (rollback)
@@ -248,29 +256,32 @@ namespace cxx
 				map.erase(it);
 			}
 		}
+
 		V& operator()() noexcept
 		{
 			return it->second;
 		}
+
 		Map::iterator iter() noexcept
 		{
 			return it;
 		}
+
 		void drop_rollback() noexcept
 		{
 			rollback = false;
 		}
-
-	private:
-		bool rollback;
-		Map& map;
-		Map::iterator it;
 	};
 
+	// Container guard used to guarantee strong-exception guarantee.
 	template<typename Container>
 	class push_back_guard {
 		using V = Container::value_type;
+
+		bool rollback;
+		Container& container;
 	public:
+		// COnstructor.
 		push_back_guard(Container& container, V const& value)
 			: container(container)
 		{
@@ -278,6 +289,8 @@ namespace cxx
 			container.push_back(value);
 			rollback = true;
 		}
+
+		// Destructor.
 		~push_back_guard()
 		{
 			if (rollback)
@@ -285,18 +298,22 @@ namespace cxx
 				container.pop_back();
 			}
 		}
+
 		void drop_rollback() noexcept
 		{
 			rollback = false;
 		}
-	private:
-		bool rollback;
-		Container& container;
 	};
 
+	// Modify guard used to guarantee strong-exception guarantee.
 	template<typename Stack, typename StackData>
 	class modify_guard {
+		Stack& stack;
+		shared_ptr<StackData> data;
+		bool bIsShareable;
+		bool rollback;
 	public:
+		// Constructor.
 		modify_guard(Stack& stack, bool bIsStillShareable)
 			: stack(stack)
 		{
@@ -314,6 +331,8 @@ namespace cxx
 			}
 			stack.bIsShareable = bIsStillShareable ? true : false;
 		}
+
+		// Destructor.
 		~modify_guard()
 		{
 			if (rollback)
@@ -322,15 +341,11 @@ namespace cxx
 				stack.data_wrapper = data;
 			}
 		}
+
 		void drop_rollback()
 		{
 			rollback = false;
 		}
-	private:
-		Stack& stack;
-		shared_ptr<StackData> data;
-		bool bIsShareable;
-		bool rollback;
 	};
 
 	template<typename K, typename V>
@@ -345,9 +360,7 @@ namespace cxx
 			elements_by_key(),
 			value
 		);
-		//THANK GOD find() works in log(n);
 		auto value_iter = elements_by_key().end();
-		// this will get us the iterator to the last element in the list.
 		--value_iter;
 		push_back_guard push_element(
 			data_wrapper->elements,
