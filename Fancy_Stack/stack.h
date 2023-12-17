@@ -39,7 +39,7 @@ namespace cxx
 		{ return a->first < b->first; }) > key_to_list_map;
 
 		stack_data();
-		~stack_data() = default;
+		~stack_data() noexcept = default;
 
 		// Used when we need to split memory.
 		stack_data(const stack_data& other);
@@ -57,17 +57,28 @@ namespace cxx
 		for (auto iter = other.elements.begin();
 			iter != other.elements.end(); ++iter)
 		{
-			auto map_pair = iter->first;
-			K key = map_pair->first;
-			V value = *(iter->second);
-			elements_by_key[key].push_back(value);
-			auto key_iter = elements_by_key.find(key);
-			auto value_iter = elements_by_key[key].end();
-			--value_iter;
-			elements.push_back(pair{ key_iter, value_iter });
-			auto list_iter = elements.end();
-			--list_iter;
-			key_to_list_map[key_iter].push_back(list_iter);
+			try 
+			{
+				auto map_pair = iter->first;
+				elements_by_key[map_pair->first].push_back(*(iter->second));
+				auto key_iter = elements_by_key.find(map_pair->first);
+				auto value_iter = elements_by_key[map_pair->first].end();
+				--value_iter;
+				elements.push_back(pair{ key_iter, value_iter });
+				auto list_iter = elements.end();
+				--list_iter;
+				key_to_list_map[key_iter].push_back(list_iter);
+			}
+			catch (...)
+			{
+				// If, e.g. somehow data structures got corrupted
+				// and accessing oother's structures causes an error,
+				// we clear all the data from this's structures, so that their 
+				// state is unaffected, and we exit the constructor.
+				elements.clear();
+				elements_by_key.clear();
+				key_to_list_map.clear();
+			}
 		}
 	}
 
@@ -80,8 +91,8 @@ namespace cxx
 	public:
 		stack();
 		stack(stack const&); //copy constructor;
-		stack(stack&&); // move constructor;
-		~stack() = default;
+		stack(stack&&) noexcept; // move constructor;
+		~stack() noexcept = default;
 
 		stack& operator=(stack);
 
@@ -192,7 +203,7 @@ namespace cxx
 	}
 
 	template<typename K, typename V>
-	inline stack<K, V>::stack(stack&& other)
+	inline stack<K, V>::stack(stack&& other) noexcept
 		: data_wrapper{ move(other.data_wrapper) }
 	{}
 
@@ -302,8 +313,8 @@ namespace cxx
 		}
 		aboutToModify(false);
 		const K& key = data_wrapper->elements.back().first->first;
-		V& value = *(data_wrapper->elements.back().second);
-		std::pair<K const&, V&> result{ key, value };
+		std::pair<K const&, V&> result{ key, 
+			*(data_wrapper->elements.back().second) };
 
 		return result;
 	}
@@ -316,8 +327,8 @@ namespace cxx
 			throw std::invalid_argument("no element in the stack");
 		}
 		const K& key = data_wrapper->elements.back().first->first;
-		const V& value = *(data_wrapper->elements.back().second);
-		std::pair<K const&, V const&> result{ key, value };
+		std::pair<K const&, V const&> result{ key, 
+			*(data_wrapper->elements.back().second) };
 
 		return result;
 	}
