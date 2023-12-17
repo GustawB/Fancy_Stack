@@ -75,7 +75,7 @@ namespace cxx
 	template <typename K, typename V> class stack
 	{
 		shared_ptr<stack_data<K, V>> data_wrapper;
-		// Flag used to determine whetherwe can share memory or not.
+		// Flag used to determine whether we can share memory or not.
 		bool bIsShareable = true;
 		friend modify_guard<stack<K, V>, stack_data<K, V>>;
 	public:
@@ -110,24 +110,44 @@ namespace cxx
 			using iterator_category = forward_iterator_tag;
 			using value_type = K;
 			using difference_type = ptrdiff_t;
-			using pointer = const value_type*;
-			using reference = const value_type&;
+			using pointer = value_type*;
+			using reference = value_type&;
 
 		private:
-			map<K, list<V>>::iterator ptr;
+			pointer ptr;
 
 		public:
-			const_iterator(map<K, list<V>>::iterator p) : ptr(p)
+			const_iterator() : ptr(nullptr)
 			{}
 
-			reference operator*() noexcept
+			const_iterator(pointer p) : ptr(p)
+			{}
+
+			const_iterator(const const_iterator& ci) : ptr(ci.ptr)
+			{}
+
+			const_iterator(const_iterator&& ci)
 			{
-				return ptr->first;
+				ptr = ci.ptr;
+				ci.ptr = nullptr;
 			}
 
-			pointer operator->() noexcept
+			//const_iterator()
+
+			reference operator*() const noexcept
 			{
-				return *ptr->first;
+				return *ptr;
+			}
+
+			pointer operator->() const noexcept
+			{
+				return ptr;
+			}
+
+			const_iterator& operator=(const const_iterator& ci)
+			{
+				ptr = ci.ptr;
+				return *this;
 			}
 
 			const_iterator& operator++() noexcept // ++iterator;
@@ -143,29 +163,27 @@ namespace cxx
 				return result;
 			}
 
-			friend bool operator==(const const_iterator& a,
-				const const_iterator& b) noexcept
+			bool operator==(const const_iterator& other) const noexcept
 			{
-				return a.ptr == b.ptr;
+				return ptr == other.ptr;
 			}
 
-			friend bool operator!= (const const_iterator& a,
-				const const_iterator& b) noexcept
+			bool operator!= (const const_iterator& other) const noexcept
 			{
-				return !(a == b);
+				return !(*this, other);
 			}
 		};
 
 		const_iterator cbegin() noexcept
 		{
 			auto map_beg = data_wrapper->elements_by_key.begin();
-			return const_iterator(map_beg);
+			return const_iterator(map_beg->first);
 		}
 
 		const_iterator cend() noexcept
 		{
-			auto map_end = data_wrapper->elements_by_key.end();
-			return const_iterator(map_end);
+			//auto map_end = data_wrapper->elements_by_key.end();
+			return const_iterator(nullptr);
 		}
 	};
 
