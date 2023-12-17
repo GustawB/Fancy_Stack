@@ -87,7 +87,7 @@ namespace cxx
 	template <typename K, typename V> class stack
 	{
 		shared_ptr<stack_data<K, V>> data_wrapper;
-		// Flag used to determine whetherwe can share memory or not.
+		// Flag used to determine whether we can share memory or not.
 		bool bIsShareable = true;
 	public:
 		stack();
@@ -227,17 +227,32 @@ namespace cxx
 		auto value_iter = data_wrapper->elements_by_key[key].end();
 		// this will get us the iterator to the last element in the list.
 		--value_iter;
-		data_wrapper->elements.push_back(pair{ map_iter, value_iter });
+		try
+		{
+			data_wrapper->elements.push_back(pair{ map_iter, value_iter });
+		}
+		catch (...)
+		{
+			data_wrapper->elements_by_key[key].erase(value_iter);
+		}
 		auto list_iter = data_wrapper->elements.end();
 		--list_iter;
-		data_wrapper->key_to_list_map[map_iter].push_back(list_iter);
+		try 
+		{
+			data_wrapper->key_to_list_map[map_iter].push_back(list_iter);
+		}
+		catch (...)
+		{
+			data_wrapper->elements_by_key[key].erase(value_iter);
+			data_wrapper->elements.erase(list_iter);
+		}
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop() {
 		if (data_wrapper->elements.empty())
 		{
-			throw std::invalid_argument("can't pop from empty stack");
+			throw std::invalid_argument("The stack is empty.");
 		}
 		aboutToModify(true);
 		auto elements_last_item = data_wrapper->elements.back();
@@ -258,14 +273,14 @@ namespace cxx
 			data_wrapper->elements_by_key.erase(key);
 		}
 
-		data_wrapper->elements.pop_back();
+		data_wrapper->elements.pop_back(); // throws nothing.
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop(K const& key) {
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument("no element with given key");
+			throw std::invalid_argument("There's no element with the given key.");
 		}
 		aboutToModify(true);
 		auto map_iter = data_wrapper->elements_by_key.find(key);
@@ -319,7 +334,7 @@ namespace cxx
 	{
 		if (data_wrapper->elements.size() == 0)
 		{
-			throw std::invalid_argument("no element in the stack");
+			throw std::invalid_argument("The stack is empty.");
 		}
 		aboutToModify(false);
 		const K& key = data_wrapper->elements.back().first->first;
@@ -334,7 +349,7 @@ namespace cxx
 	{
 		if (data_wrapper->elements.size() == 0)
 		{
-			throw std::invalid_argument("no element in the stack");
+			throw std::invalid_argument("The stack is empty.");
 		}
 		const K& key = data_wrapper->elements.back().first->first;
 		std::pair<K const&, V const&> result{ key, 
@@ -348,7 +363,8 @@ namespace cxx
 	{
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument("no element of given key in the stack");
+			throw std::invalid_argument
+			("There's no element with the given key in the stack");
 		}
 		aboutToModify(false);
 
@@ -360,7 +376,8 @@ namespace cxx
 	{
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument("no element of given key in the stack");
+			throw std::invalid_argument
+			("There's no element with the given key in the stack");
 		}
 
 		return data_wrapper->elements_by_key[key].back();
@@ -376,7 +393,19 @@ namespace cxx
 		}
 		else
 		{
-			data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
+			shared_ptr<stack_data<K, V>> helper;
+			try
+			{
+				helper = make_shared<stack_data<K, V>>(*data_wrapper);
+			}
+			catch (...)
+			{
+				// Creating copy of data failed, and we don't want to loose
+				// access to it, so we won't change the object that 
+				// data_wrapper points to.
+				throw;
+			}
+			data_wrapper = helper; // noexcept operator=.
 		}
 
 		return *this;
@@ -387,10 +416,19 @@ namespace cxx
 	{
 		if (data_wrapper.use_count() > 1 && bIsShareable)
 		{
-			// Make new wrapper. This should make the previous
-			// wrapper object to go out of scope and call its 
-			// destructor (RAII).
-			data_wrapper = make_shared<stack_data<K, V>>(*data_wrapper);
+			shared_ptr<stack_data<K, V>> helper;
+			try
+			{
+				helper = make_shared<stack_data<K, V>>(*data_wrapper);
+			}
+			catch (...)
+			{
+				// Creating copy of data failed, and we don't want to loose
+				// access to it, so we won't change the object that 
+				// data_wrapper points to.
+				throw;
+			}
+			data_wrapper = helper; // noexcept operator=.
 		}
 		bIsShareable = bIsStillShareable ? true : false;
 	}
