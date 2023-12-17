@@ -19,13 +19,12 @@ namespace cxx
 	using std::ptrdiff_t;
 	using std::forward_iterator_tag;
 
-	// Every stack will be pointing to the stack data object,
+	// Every stack will have a shared_ptr 
+	// pointing to the stack data object,
 	// and if they share it and one modified it, then we 
-	// create a new data for it.
+	// create a new stack_data for it.
 	template <typename K, typename V> class stack_data
 	{
-		//using element_list = list<pair<K, V>>;
-		//using element_list = list<V>;
 		using element_map = map<K, list<V>>;
 		using element_iterator = typename list<V>::iterator;
 		using element_by_key_iterator = typename element_map::iterator;
@@ -38,10 +37,10 @@ namespace cxx
 			decltype([](element_by_key_iterator a, element_by_key_iterator b)
 				{ return a->first < b->first; }) > key_to_list_map;
 
-		stack_data();
-		~stack_data() = default;
+		stack_data(); // Empty constructor.
+		~stack_data() = default; // Default destructor.
 
-		// Used when we need to split memory.
+		// Copy constructor used when we need to split memory.
 		stack_data(const stack_data& other);
 	};
 
@@ -54,6 +53,9 @@ namespace cxx
 	stack_data<K, V>::stack_data(const stack_data<K, V>& other)
 		: elements_by_key{}, elements{}, key_to_list_map{}
 	{
+		// Code below inserts copy of every element from other.elements_by_key
+		// to this.elements_by_key, and after that, it creates iterators
+		// to those elements, and adds them to the rest of data structures.
 		for (auto iter = other.elements.begin();
 			iter != other.elements.end(); ++iter)
 		{
@@ -74,74 +76,85 @@ namespace cxx
 
 	template <typename K, typename V> class stack
 	{
+		// Shared pointer that owns the stack_data object with our data.
 		shared_ptr<stack_data<K, V>> data_wrapper;
 		// Flag used to determine whether we can share memory or not.
 		bool bIsShareable = true;
+		// Guard used to guarantee strong-exception guarantee.
 		friend modify_guard<stack<K, V>, stack_data<K, V>>;
 	public:
-		stack();
-		stack(stack const&); //copy constructor;
-		stack(stack&&) noexcept; // move constructor;
-		~stack() noexcept = default;
+		stack(); // Empty constructor.
+		stack(stack const&); // Copy constructor;
+		stack(stack&&) noexcept; // Move constructor;
+		~stack() noexcept = default; // Default destructor.
 
-		stack& operator=(stack);
+		stack& operator=(stack); // Assignment operator.
 
-		void push(K const&, V const&);
+		// Pushes an element on the top of the stack.
+		void push(K const&, V const&); 
 
+		// Pops the top element from the stack.
 		void pop();
 
+		// Pops the element closest to the top with the given key
+		// from the stack.
 		void pop(K const&);
 
+		// Clears all data structures.
 		void clear();
 
+		// Returns the size of the stack.
 		size_t size() const noexcept;
+		// Returns the number of elements with the given key.
 		size_t count(K const&) const noexcept;
 
+		// Returns the top of the stack with an option to modify its value.
 		std::pair<K const&, V&> front();
+		// Returns the top of the stack.
 		std::pair<K const&, V const&> front() const;
 
+		// Returns the first value with the given key. It can be modified.
 		V& front(K const&);
+		// Returns the first value with the given key.
 		V const& front(K const&) const;
 
 	public:
+		// Custom iterator for the stack class.
 		class const_iterator
 		{
 		public:
+			// Necessary tags.
 			using iterator_category = forward_iterator_tag;
 			using value_type = K;
 			using difference_type = ptrdiff_t;
-			using pointer = value_type*;
-			using reference = value_type&;
+			using pointer = const value_type*;
+			using reference = const value_type&;
 
 		private:
-			pointer ptr;
+			map<K, list<V>>::iterator ptr;
 
 		public:
-			const_iterator() : ptr(nullptr)
-			{}
+			const_iterator() : ptr(data_wrapper->elements_by_key.end())
+			{} // Empty constructor.
 
-			const_iterator(pointer p) : ptr(p)
-			{}
+			const_iterator(map<K, list<V>>::iterator p) : ptr(p)
+			{} // constructor that takes an iterator to the element in the
+			// elements_by_key map.
 
 			const_iterator(const const_iterator& ci) : ptr(ci.ptr)
-			{}
+			{} // Copy constructor.
 
-			const_iterator(const_iterator&& ci)
-			{
-				ptr = ci.ptr;
-				ci.ptr = nullptr;
-			}
-
-			//const_iterator()
+			const_iterator(const_iterator&& ci) : ptr(std::move(ci.ptr)) 
+			{} // Move constructor.
 
 			reference operator*() const noexcept
 			{
-				return *ptr;
+				return ptr->first;
 			}
 
 			pointer operator->() const noexcept
 			{
-				return ptr;
+				return &ptr->first;
 			}
 
 			const_iterator& operator=(const const_iterator& ci)
@@ -170,20 +183,20 @@ namespace cxx
 
 			bool operator!= (const const_iterator& other) const noexcept
 			{
-				return !(*this, other);
+				return !(*this == other);
 			}
 		};
 
-		const_iterator cbegin() noexcept
+		const_iterator cbegin() const noexcept
 		{
 			auto map_beg = data_wrapper->elements_by_key.begin();
-			return const_iterator(map_beg->first);
+			return const_iterator(map_beg);
 		}
 
-		const_iterator cend() noexcept
+		const_iterator cend() const noexcept
 		{
-			//auto map_end = data_wrapper->elements_by_key.end();
-			return const_iterator(nullptr);
+			auto map_end = data_wrapper->elements_by_key.end();
+			return const_iterator(map_end);
 		}
 	};
 
@@ -197,7 +210,7 @@ namespace cxx
 	{
 		if (other.bIsShareable)
 		{
-			//I think this should increment the ref_count.
+			// This will increment the ref_count.
 			data_wrapper = other.data_wrapper;
 		}
 		else
