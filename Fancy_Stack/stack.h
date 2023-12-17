@@ -78,6 +78,7 @@ namespace cxx
 				elements.clear();
 				elements_by_key.clear();
 				key_to_list_map.clear();
+				throw;
 			}
 		}
 	}
@@ -192,13 +193,22 @@ namespace cxx
 	{
 		if (other.bIsShareable)
 		{
-			//I think this should increment the ref_count.
+			// This will result in data_wrapper and  other.data_wrapper sharing
+			// the ownership of a stack_data object.
 			data_wrapper = other.data_wrapper;
 		}
 		else
 		{
-			//Create new data object.
-			data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
+			try
+			{
+				//Create new data object.
+				data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
+			}
+			catch (...)
+			{
+				data_wrapper.reset(); // noexcept.
+				throw;
+			}
 		}
 	}
 
