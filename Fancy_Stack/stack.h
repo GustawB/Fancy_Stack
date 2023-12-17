@@ -34,12 +34,12 @@ namespace cxx
 	public:
 		element_map elements_by_key;
 		element_list elements;
-		map<element_by_key_iterator, list<element_list_iterator>,
-			decltype([](element_by_key_iterator a, element_by_key_iterator b) 
-		{ return a->first < b->first; }) > key_to_list_map;
+		map < element_by_key_iterator, list<element_list_iterator>,
+			decltype([](element_by_key_iterator a, element_by_key_iterator b)
+				{ return a->first < b->first; }) > key_to_list_map;
 
 		stack_data();
-		~stack_data() noexcept = default;
+		~stack_data() = default;
 
 		// Used when we need to split memory.
 		stack_data(const stack_data& other);
@@ -57,38 +57,27 @@ namespace cxx
 		for (auto iter = other.elements.begin();
 			iter != other.elements.end(); ++iter)
 		{
-			try 
-			{
-				auto map_pair = iter->first;
-				elements_by_key[map_pair->first].push_back(*(iter->second));
-				auto key_iter = elements_by_key.find(map_pair->first);
-				auto value_iter = elements_by_key[map_pair->first].end();
-				--value_iter;
-				elements.push_back(pair{ key_iter, value_iter });
-				auto list_iter = elements.end();
-				--list_iter;
-				key_to_list_map[key_iter].push_back(list_iter);
-			}
-			catch (...)
-			{
-				// If, e.g. somehow data structures got corrupted
-				// and accessing oother's structures causes an error,
-				// we clear all the data from this's structures, so that their 
-				// state is unaffected, and we exit the constructor.
-				elements.clear();
-				elements_by_key.clear();
-				key_to_list_map.clear();
-				throw;
-			}
+			auto map_pair = iter->first;
+			elements_by_key[map_pair->first].push_back(*(iter->second));
+			auto key_iter = elements_by_key.find(map_pair->first);
+			auto value_iter = elements_by_key[map_pair->first].end();
+			--value_iter;
+			elements.push_back(pair{ key_iter, value_iter });
+			auto list_iter = elements.end();
+			--list_iter;
+			key_to_list_map[key_iter].push_back(list_iter);
 		}
 	}
 
+	template<typename Stack, typename StackData>
+	class modify_guard;
 
 	template <typename K, typename V> class stack
 	{
 		shared_ptr<stack_data<K, V>> data_wrapper;
-		// Flag used to determine whether we can share memory or not.
+		// Flag used to determine whetherwe can share memory or not.
 		bool bIsShareable = true;
+		friend modify_guard<stack<K, V>, stack_data<K, V>>;
 	public:
 		stack();
 		stack(stack const&); //copy constructor;
@@ -105,17 +94,14 @@ namespace cxx
 
 		void clear();
 
-		size_t size() const;
-		size_t count(K const&) const;
+		size_t size() const noexcept;
+		size_t count(K const&) const noexcept;
 
 		std::pair<K const&, V&> front();
 		std::pair<K const&, V const&> front() const;
 
 		V& front(K const&);
 		V const& front(K const&) const;
-
-	private:
-		void aboutToModify(bool);
 
 	public:
 		class const_iterator
@@ -150,7 +136,7 @@ namespace cxx
 				return *this;
 			}
 
-			const_iterator& operator++(int) noexcept // iterator++
+			const_iterator operator++(int) noexcept // iterator++
 			{
 				const_iterator result(*this);
 				operator++();
@@ -193,22 +179,13 @@ namespace cxx
 	{
 		if (other.bIsShareable)
 		{
-			// This will result in data_wrapper and  other.data_wrapper sharing
-			// the ownership of a stack_data object.
+			//I think this should increment the ref_count.
 			data_wrapper = other.data_wrapper;
 		}
 		else
 		{
-			try
-			{
-				//Create new data object.
-				data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
-			}
-			catch (...)
-			{
-				data_wrapper.reset(); // noexcept.
-				throw;
-			}
+			//Create new data object.
+			data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
 		}
 	}
 
@@ -217,44 +194,159 @@ namespace cxx
 		: data_wrapper{ move(other.data_wrapper) }
 	{}
 
+	static bool map_access_throw = false;
+	static bool push_back_throw = false;
+	static bool modify_guard_throw = false;
+
+	template<typename Map>
+	class map_access_guard {
+		using K = Map::key_type;
+		using V = Map::mapped_type;
+	public:
+		map_access_guard(Map& map, K const& key) : map(map)
+		{
+			if (map_access_throw) throw std::bad_alloc();
+			auto p = map.insert({ key, V() });
+			it = p.first;
+			rollback = p.second;
+		}
+		~map_access_guard()
+		{
+			if (rollback)
+			{
+				map.erase(it);
+			}
+		}
+		V& operator()() noexcept
+		{
+			return it->second;
+		}
+		Map::iterator iter() noexcept
+		{
+			return it;
+		}
+		void drop_rollback() noexcept
+		{
+			rollback = false;
+		}
+
+	private:
+		bool rollback;
+		Map& map;
+		Map::iterator it;
+	};
+
+	template<typename Container>
+	class push_back_guard {
+		using V = Container::value_type;
+	public:
+		push_back_guard(Container& container, V const& value)
+			: container(container)
+		{
+			if (push_back_throw) throw std::bad_alloc();
+			container.push_back(value);
+			rollback = true;
+		}
+		~push_back_guard()
+		{
+			if (rollback)
+			{
+				container.pop_back();
+			}
+		}
+		void drop_rollback() noexcept
+		{
+			rollback = false;
+		}
+	private:
+		bool rollback;
+		Container& container;
+	};
+
+	template<typename Stack, typename StackData>
+	class modify_guard {
+	public:
+		modify_guard(Stack& stack, bool bIsStillShareable)
+			: stack(stack)
+		{
+			if (modify_guard_throw) throw std::bad_alloc();
+			this->rollback = true;
+			this->data = stack.data_wrapper;
+			this->bIsShareable = stack.bIsShareable;
+			if (stack.data_wrapper.use_count() > 2 && bIsShareable)
+			{
+				// Make new wrapper. This should make the previous
+				// wrapper object to go out of scope and call its 
+				// destructor (RAII).
+				stack.data_wrapper =
+					make_shared<StackData>(*stack.data_wrapper);
+			}
+			stack.bIsShareable = bIsStillShareable ? true : false;
+		}
+		~modify_guard()
+		{
+			if (rollback)
+			{
+				stack.bIsShareable = bIsShareable;
+				stack.data_wrapper = data;
+			}
+		}
+		void drop_rollback()
+		{
+			rollback = false;
+		}
+	private:
+		Stack& stack;
+		shared_ptr<StackData> data;
+		bool bIsShareable;
+		bool rollback;
+	};
+
 	template<typename K, typename V>
 	inline void stack<K, V>::push(K const& key, V const& value)
 	{
-		aboutToModify(true);
-		data_wrapper->elements_by_key[key].push_back(value);
+		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, true);
+		map_access_guard elements_by_key(
+			data_wrapper->elements_by_key,
+			key
+		);
+		push_back_guard push_value(
+			elements_by_key(),
+			value
+		);
 		//THANK GOD find() works in log(n);
-		auto map_iter = data_wrapper->elements_by_key.find(key);
-		auto value_iter = data_wrapper->elements_by_key[key].end();
+		auto value_iter = elements_by_key().end();
 		// this will get us the iterator to the last element in the list.
 		--value_iter;
-		try
-		{
-			data_wrapper->elements.push_back(pair{ map_iter, value_iter });
-		}
-		catch (...)
-		{
-			data_wrapper->elements_by_key[key].erase(value_iter);
-		}
+		push_back_guard push_element(
+			data_wrapper->elements,
+			pair{ elements_by_key.iter(), value_iter }
+		);
 		auto list_iter = data_wrapper->elements.end();
 		--list_iter;
-		try 
-		{
-			data_wrapper->key_to_list_map[map_iter].push_back(list_iter);
-		}
-		catch (...)
-		{
-			data_wrapper->elements_by_key[key].erase(value_iter);
-			data_wrapper->elements.erase(list_iter);
-		}
+		map_access_guard key_to_list_map(
+			data_wrapper->key_to_list_map,
+			elements_by_key.iter()
+		);
+		push_back_guard push_list(
+			key_to_list_map(),
+			list_iter
+		);
+		guard.drop_rollback();
+		elements_by_key.drop_rollback();
+		push_value.drop_rollback();
+		push_element.drop_rollback();
+		key_to_list_map.drop_rollback();
+		push_list.drop_rollback();
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop() {
 		if (data_wrapper->elements.empty())
 		{
-			throw std::invalid_argument("The stack is empty.");
+			throw std::invalid_argument("can't pop from empty stack");
 		}
-		aboutToModify(true);
+		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, true);
 		auto elements_last_item = data_wrapper->elements.back();
 		auto map_iter = elements_last_item.first;
 		auto value_iter = elements_last_item.second;
@@ -273,19 +365,19 @@ namespace cxx
 			data_wrapper->elements_by_key.erase(key);
 		}
 
-		data_wrapper->elements.pop_back(); // throws nothing.
+		data_wrapper->elements.pop_back();
+		guard.drop_rollback();
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::pop(K const& key) {
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument("There's no element with the given key.");
+			throw std::invalid_argument("no element with given key");
 		}
-		aboutToModify(true);
+		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, true);
 		auto map_iter = data_wrapper->elements_by_key.find(key);
 		auto pop_iter = data_wrapper->key_to_list_map[map_iter].back();
-		--pop_iter;
 		data_wrapper->elements.erase(pop_iter);
 
 		auto key_to_list_end = data_wrapper->key_to_list_map[map_iter].end();
@@ -295,7 +387,7 @@ namespace cxx
 		{
 			data_wrapper->key_to_list_map.erase(map_iter);
 		}
-		
+
 		auto by_key_end = data_wrapper->elements_by_key[key].end();
 		--by_key_end;
 		data_wrapper->elements_by_key[key].erase(by_key_end);
@@ -303,25 +395,27 @@ namespace cxx
 		{
 			data_wrapper->elements_by_key.erase(key);
 		}
+		guard.drop_rollback();
 	}
 
 	template<typename K, typename V>
 	inline void stack<K, V>::clear()
 	{
-		aboutToModify(true);
+		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, true);
 		data_wrapper->elements.clear();
 		data_wrapper->elements_by_key.clear();
 		data_wrapper->key_to_list_map.clear();
+		guard.drop_rollback();
 	}
 
 	template<typename K, typename V>
-	inline size_t stack<K, V>::size() const
+	inline size_t stack<K, V>::size() const noexcept
 	{
 		return data_wrapper->elements.size();
 	}
 
 	template<typename K, typename V>
-	inline size_t stack<K, V>::count(K const& key) const {
+	inline size_t stack<K, V>::count(K const& key) const noexcept {
 		if (!data_wrapper->elements_by_key.contains(key))
 		{
 			return 0;
@@ -334,13 +428,13 @@ namespace cxx
 	{
 		if (data_wrapper->elements.size() == 0)
 		{
-			throw std::invalid_argument("The stack is empty.");
+			throw std::invalid_argument("no element in the stack");
 		}
-		aboutToModify(false);
+		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, false);
 		const K& key = data_wrapper->elements.back().first->first;
-		std::pair<K const&, V&> result{ key, 
+		std::pair<K const&, V&> result{ key,
 			*(data_wrapper->elements.back().second) };
-
+		guard.drop_rollback();
 		return result;
 	}
 
@@ -349,10 +443,10 @@ namespace cxx
 	{
 		if (data_wrapper->elements.size() == 0)
 		{
-			throw std::invalid_argument("The stack is empty.");
+			throw std::invalid_argument("no element in the stack");
 		}
 		const K& key = data_wrapper->elements.back().first->first;
-		std::pair<K const&, V const&> result{ key, 
+		std::pair<K const&, V const&> result{ key,
 			*(data_wrapper->elements.back().second) };
 
 		return result;
@@ -363,11 +457,10 @@ namespace cxx
 	{
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument
-			("There's no element with the given key in the stack");
+			throw std::invalid_argument("no element of given key in the stack");
 		}
-		aboutToModify(false);
-
+		modify_guard<stack<K, V>, stack_data<K, V>> guard(*this, false);
+		guard.drop_rollback();
 		return data_wrapper->elements_by_key[key].back();
 	}
 
@@ -376,8 +469,7 @@ namespace cxx
 	{
 		if (data_wrapper->elements_by_key[key].empty())
 		{
-			throw std::invalid_argument
-			("There's no element with the given key in the stack");
+			throw std::invalid_argument("no element of given key in the stack");
 		}
 
 		return data_wrapper->elements_by_key[key].back();
@@ -393,44 +485,10 @@ namespace cxx
 		}
 		else
 		{
-			shared_ptr<stack_data<K, V>> helper;
-			try
-			{
-				helper = make_shared<stack_data<K, V>>(*data_wrapper);
-			}
-			catch (...)
-			{
-				// Creating copy of data failed, and we don't want to loose
-				// access to it, so we won't change the object that 
-				// data_wrapper points to.
-				throw;
-			}
-			data_wrapper = helper; // noexcept operator=.
+			data_wrapper = make_shared<stack_data<K, V>>(*other.data_wrapper);
 		}
 
 		return *this;
-	}
-
-	template<typename K, typename V>
-	inline void stack<K, V>::aboutToModify(bool bIsStillShareable)
-	{
-		if (data_wrapper.use_count() > 1 && bIsShareable)
-		{
-			shared_ptr<stack_data<K, V>> helper;
-			try
-			{
-				helper = make_shared<stack_data<K, V>>(*data_wrapper);
-			}
-			catch (...)
-			{
-				// Creating copy of data failed, and we don't want to loose
-				// access to it, so we won't change the object that 
-				// data_wrapper points to.
-				throw;
-			}
-			data_wrapper = helper; // noexcept operator=.
-		}
-		bIsShareable = bIsStillShareable ? true : false;
 	}
 }
 
